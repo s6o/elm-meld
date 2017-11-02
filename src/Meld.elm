@@ -1,7 +1,9 @@
-module Meld
+module Types.Meld
     exposing
         ( Meld
         , Model
+        , cmds
+        , cmdseq
         , init
         , sequence
         , update
@@ -11,7 +13,8 @@ module Meld
 
 {-| Composable `Task`s, instead of hundreds of Msg pattern match cases.
 
-@docs Meld, Model, init, sequence, update, withMergeCmds, withTasks
+@docs Meld, Model, cmds, cmdseq, init, sequence, update, withMergeCmds, withTasks
+
 -}
 
 import Task exposing (Task)
@@ -36,24 +39,51 @@ type alias Model r =
     { r | meldTasks : Int }
 
 
+{-| Execute a set of `Meld r x`'s tasks in any/unspecified order.
+-}
+cmds : (Result x (Meld r x) -> msg) -> Meld r x -> Cmd msg
+cmds toMsg meld =
+    let
+        (Meld { tasks }) =
+            meld
+    in
+    tasks
+        |> List.map (\tf -> tf meld |> Task.attempt toMsg)
+        |> Cmd.batch
+
+
+{-| Execute a set of `Meld r x`'s tasks in sequence, by proceeding to the next
+only upon successful execution.
+-}
+cmdseq : (Result x (Meld r x) -> msg) -> Meld r x -> Cmd msg
+cmdseq toMsg meld =
+    let
+        (Meld { tasks }) =
+            meld
+    in
+    tasks
+        |> List.foldl Task.andThen (initTask meld)
+        |> Task.attempt toMsg
+
+
 {-| Create an initial `Meld r x` from specified error and application model types.
 -}
 init : x -> Model r -> Meld r x
-init userError userModel =
+init appError appModel =
     Meld
-        { error = userError
-        , model = userModel
+        { error = appError
+        , model = appModel
         , tasks = []
         , merges = []
         , commands = []
         }
 
 
-{-| Merge up model changes from `sequence` or `update` and execute commands from
-the merged up/final model (state).
+{-| Merge up model changes and execute commands with latest model as specified
+by `withMergeCmds`.
 -}
-finalize : (Int -> Result x (Meld r x) -> msg) -> Model r -> Int -> Meld r x -> ( Model r, Cmd msg )
-finalize toMsg appModel taskCount (Meld { merges, commands }) =
+finalize : (Int -> Result x (Meld r x) -> msg) -> Int -> Meld r x -> Model r -> ( Model r, Cmd msg )
+finalize toMsg taskCount (Meld { merges, commands }) appModel =
     let
         finalModel =
             merges
@@ -75,10 +105,11 @@ initTask meld =
     Task.succeed meld
 
 
-{-| Execute a set of `Task`s added to a `Meld r x` instance in sequence.
+{-| Execute a set of `Task`s added to a `Meld r x` instance in sequence and
+update `Model r`'s `meldTasks` counter.
 -}
-sequence : Meld r x -> (Int -> Result x (Meld r x) -> msg) -> ( Model r, Cmd msg )
-sequence (Meld { error, model, tasks }) toMsg =
+sequence : (Int -> Result x (Meld r x) -> msg) -> Meld r x -> ( Model r, Cmd msg )
+sequence toMsg (Meld { error, model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -92,16 +123,16 @@ sequence (Meld { error, model, tasks }) toMsg =
                 { model | meldTasks = model.meldTasks + taskCount }
         in
         ( nextModel
-        , tasks
-            |> List.foldl Task.andThen (init error nextModel |> initTask)
-            |> Task.attempt (toMsg taskCount)
+        , init error nextModel
+            |> cmdseq (toMsg taskCount)
         )
 
 
-{-| Execute a set of `Task`s added to a `Meld r x` instance in any order.
+{-| Execute a set of `Task`s added to a `Meld r x` instance in any order and
+update `Model r`'s `meldTasks` counter.
 -}
-update : Meld r x -> (Int -> Result x (Meld r x) -> msg) -> ( Model r, Cmd msg )
-update (Meld { error, model, tasks }) toMsg =
+update : (Int -> Result x (Meld r x) -> msg) -> Meld r x -> ( Model r, Cmd msg )
+update toMsg (Meld { error, model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -112,18 +143,12 @@ update (Meld { error, model, tasks }) toMsg =
                 { model | meldTasks = model.meldTasks + List.length tasks }
         in
         ( nextModel
-        , tasks
-            |> List.map
-                (\tf ->
-                    init error nextModel
-                        |> tf
-                        |> Task.attempt (toMsg 1)
-                )
-            |> Cmd.batch
+        , init error nextModel
+            |> cmds (toMsg 1)
         )
 
 
-{-| Append a merge function and a list command task functions to specified `Meld r x`.
+{-| Append a merge function and a list of command task functions to specified `Meld r x`.
 -}
 withMergeCmds : (Model r -> Model r) -> List (Model r -> Task x (Meld r x)) -> Meld r x -> Meld r x
 withMergeCmds mergeFn cmdFns (Meld r) =
