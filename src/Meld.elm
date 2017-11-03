@@ -90,20 +90,20 @@ model (Meld { model }) =
 executed in any/unspecified order.
 -}
 send : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
-send toMsg taskCountFn storeCountFn (Meld { model, tasks }) =
-    if List.isEmpty tasks then
-        ( model
+send toMsg taskCountFn storeCountFn (Meld r) =
+    if List.isEmpty r.tasks then
+        ( r.model
         , Cmd.none
         )
     else
         let
             nextModel =
-                taskCountFn model
-                    |> (\tc -> tc + List.length tasks)
+                taskCountFn r.model
+                    |> (\tc -> tc + List.length r.tasks)
                     |> storeCountFn
         in
         ( nextModel
-        , init nextModel
+        , withModel nextModel (Meld r)
             |> cmds (toMsg 1)
         )
 
@@ -112,23 +112,23 @@ send toMsg taskCountFn storeCountFn (Meld { model, tasks }) =
 by continueing to a next task only upon successful completion of the previous task.
 -}
 sequence : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
-sequence toMsg taskCountFn storeCountFn (Meld { model, tasks }) =
-    if List.isEmpty tasks then
-        ( model
+sequence toMsg taskCountFn storeCountFn (Meld r) =
+    if List.isEmpty r.tasks then
+        ( r.model
         , Cmd.none
         )
     else
         let
             taskCount =
-                List.length tasks
+                List.length r.tasks
 
             nextModel =
-                taskCountFn model
+                taskCountFn r.model
                     |> (\tc -> tc + taskCount)
                     |> storeCountFn
         in
         ( nextModel
-        , init nextModel
+        , withModel nextModel (Meld r)
             |> cmdseq (toMsg taskCount)
         )
 
@@ -168,6 +168,15 @@ withMerge mergeFn (Meld r) =
             | model = mergeFn r.model
             , merges = mergeFn :: r.merges
         }
+
+
+{-| @private
+Override `Meld m x msg` model.
+-}
+withModel : m -> Meld m x msg -> Meld m x msg
+withModel m (Meld r) =
+    Meld
+        { r | model = m }
 
 
 {-| Append a list of task functions to specified `Meld m x msg`.
