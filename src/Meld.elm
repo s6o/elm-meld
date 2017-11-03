@@ -26,8 +26,7 @@ import Task exposing (Task)
 -}
 type Meld m x msg
     = Meld
-        { error : x
-        , model : m
+        { model : m
         , tasks : List (Meld m x msg -> Task x (Meld m x msg))
         , merges : List (m -> m)
         , commands : List (m -> Cmd msg)
@@ -61,13 +60,12 @@ cmdseq toMsg meld =
         |> Task.attempt toMsg
 
 
-{-| Create an initial `Meld m x msg` from specified model and error.
+{-| Create an initial `Meld m x msg` from specified model.
 -}
-init : m -> x -> Meld m x msg
-init m err =
+init : m -> Meld m x msg
+init m =
     Meld
-        { error = err
-        , model = m
+        { model = m
         , tasks = []
         , merges = []
         , commands = []
@@ -92,7 +90,7 @@ model (Meld { model }) =
 executed in any/unspecified order.
 -}
 send : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
-send toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
+send toMsg taskCountFn storeCountFn (Meld { model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -105,7 +103,7 @@ send toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
                     |> storeCountFn
         in
         ( nextModel
-        , init nextModel error
+        , init nextModel
             |> cmds (toMsg 1)
         )
 
@@ -114,7 +112,7 @@ send toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
 by continueing to a next task only upon successful completion of the previous task.
 -}
 sequence : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
-sequence toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
+sequence toMsg taskCountFn storeCountFn (Meld { model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -130,7 +128,7 @@ sequence toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
                     |> storeCountFn
         in
         ( nextModel
-        , init nextModel error
+        , init nextModel
             |> cmdseq (toMsg taskCount)
         )
 
