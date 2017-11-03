@@ -3,9 +3,9 @@ module Meld
         ( Meld
         , cmds
         , cmdseq
-        , finalize
         , init
         , model
+        , send
         , sequence
         , update
         , withCmds
@@ -15,7 +15,7 @@ module Meld
 
 {-| Composeable `Task`s, instead of hundreds of Msg pattern match cases.
 
-@docs Meld, cmds, cmdseq, finalize, init, model, sequence, update, withCmds, withMerge, withTasks
+@docs Meld, cmds, cmdseq, init, model, send, sequence, update, withCmds, withMerge, withTasks
 
 -}
 
@@ -61,24 +61,6 @@ cmdseq toMsg meld =
         |> Task.attempt toMsg
 
 
-{-| Apply model merges to `m`, query and update active task count and create command batch.
--}
-finalize : Int -> (m -> Int) -> (Int -> m) -> m -> Meld m x msg -> ( m, Cmd msg )
-finalize taskCount modelCountFn storeCountFn appModel (Meld { merges, commands }) =
-    let
-        finalModel =
-            merges
-                |> List.foldr
-                    (\mergeFn accumModel -> mergeFn accumModel)
-                    (modelCountFn appModel - taskCount |> storeCountFn)
-    in
-    ( finalModel
-    , commands
-        |> List.map (\cmdFn -> cmdFn finalModel)
-        |> Cmd.batch
-    )
-
-
 {-| Create an initial `Meld m x msg` from specified model and error.
 -}
 init : m -> x -> Meld m x msg
@@ -106,6 +88,28 @@ model (Meld { model }) =
     model
 
 
+{-| Update model task count and create `Cmd`s from `Meld m x msg` tasks to be
+executed in any/unspecified order.
+-}
+send : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
+send toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
+    if List.isEmpty tasks then
+        ( model
+        , Cmd.none
+        )
+    else
+        let
+            nextModel =
+                taskCountFn model
+                    |> (\tc -> tc + List.length tasks)
+                    |> storeCountFn
+        in
+        ( nextModel
+        , init nextModel error
+            |> cmds (toMsg 1)
+        )
+
+
 {-| Update model task count and execute `Meld m x msg` tasks in sequence,
 by continueing to a next task only upon successful completion of the previous task.
 -}
@@ -131,25 +135,22 @@ sequence toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
         )
 
 
-{-| Update model task count and execute `Meld m x msg` tasks in any/unspecified order.
+{-| Apply model merges to `m`, update active task count and create command batch.
 -}
-update : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
-update toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
-    if List.isEmpty tasks then
-        ( model
-        , Cmd.none
-        )
-    else
-        let
-            nextModel =
-                taskCountFn model
-                    |> (\tc -> tc + List.length tasks)
-                    |> storeCountFn
-        in
-        ( nextModel
-        , init nextModel error
-            |> cmds (toMsg 1)
-        )
+update : Int -> (m -> Int) -> (Int -> m) -> m -> Meld m x msg -> ( m, Cmd msg )
+update taskCount modelCountFn storeCountFn appModel (Meld { merges, commands }) =
+    let
+        finalModel =
+            merges
+                |> List.foldr
+                    (\mergeFn accumModel -> mergeFn accumModel)
+                    (modelCountFn appModel - taskCount |> storeCountFn)
+    in
+    ( finalModel
+    , commands
+        |> List.map (\cmdFn -> cmdFn finalModel)
+        |> Cmd.batch
+    )
 
 
 {-| Append a list of command functions to specified `Meld m x msg`.
