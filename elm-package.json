@@ -1,6 +1,6 @@
 {
     "version": "1.0.0",
-    "summary": "elm-meld - Composable tasks, instead of hundreds of Msg pattern match cases.",
+    "summary": "elm-meld - Composeable tasks, instead of hundreds of Msg pattern match cases.",
     "repository": "https://github.com/s6o/elm-meld.git",
     "license": "MIT",
     "source-directories": [
