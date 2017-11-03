@@ -1,10 +1,6 @@
-module Types.Meld
+module Meld
     exposing
-        ( FnCmd
-        , FnMerge
-        , FnTask
-        , Meld
-        , Model
+        ( Meld
         , cmds
         , cmdseq
         , finalize
@@ -14,59 +10,33 @@ module Types.Meld
         , update
         , withCmds
         , withMerge
-        , withModel
         , withTasks
         )
 
-{-| Composable `Task`s, instead of hundreds of Msg pattern match cases.
+{-| Composeable `Task`s, instead of hundreds of Msg pattern match cases.
 
-@docs FnCmd, FnMerge, FnTask, Meld, Model, init, sequence, update, withMergeCmds, withTasks
+@docs Meld, cmds, cmdseq, finalize, init, model, sequence, update, withCmds, withMerge, withTasks
 
 -}
 
 import Task exposing (Task)
 
 
-{-| `Meld r x`'s command signature.
+{-| Capture an application's model, tasks, tagged model merges and commands.
 -}
-type alias FnCmd r msg =
-    Model r -> Cmd msg
-
-
-{-| `Meld r x`'s merge signature.
--}
-type alias FnMerge r =
-    Model r -> Model r
-
-
-{-| `Meld r x`'s task signature.
--}
-type alias FnTask r x msg =
-    Meld r x msg -> Task x (Meld r x msg)
-
-
-{-| An application's `Model r`, `FnTask r x` and `FnCmd rx` container to manage
-Elm's `Task` composition and application model merges.
--}
-type Meld r x msg
+type Meld m x msg
     = Meld
         { error : x
-        , model : Model r
-        , tasks : List (FnTask r x msg)
-        , merges : List (FnMerge r)
-        , commands : List (FnCmd r msg)
+        , model : m
+        , tasks : List (Meld m x msg -> Task x (Meld m x msg))
+        , merges : List (m -> m)
+        , commands : List (m -> Cmd msg)
         }
 
 
-{-| Requirement(s) for an application's model
+{-| Execute a set of `Meld m x msg`'s tasks in any/unspecified order.
 -}
-type alias Model r =
-    { r | meldTasks : Int }
-
-
-{-| Execute a set of `Meld r x`'s tasks in any/unspecified order.
--}
-cmds : (Result x (Meld r x msg) -> msg) -> Meld r x msg -> Cmd msg
+cmds : (Result x (Meld m x msg) -> msg) -> Meld m x msg -> Cmd msg
 cmds toMsg meld =
     let
         (Meld { tasks }) =
@@ -77,10 +47,10 @@ cmds toMsg meld =
         |> Cmd.batch
 
 
-{-| Execute a set of `Meld r x`'s tasks in sequence, by proceeding to the next
+{-| Execute a set of `Meld m x msg`'s tasks in sequence, by proceeding to the next
 only upon successful execution.
 -}
-cmdseq : (Result x (Meld r x msg) -> msg) -> Meld r x msg -> Cmd msg
+cmdseq : (Result x (Meld m x msg) -> msg) -> Meld m x msg -> Cmd msg
 cmdseq toMsg meld =
     let
         (Meld { tasks }) =
@@ -91,17 +61,16 @@ cmdseq toMsg meld =
         |> Task.attempt toMsg
 
 
-{-| Merge up model changes and execute commands with latest model as specified
-by `withMergeCmds`.
+{-| Apply model merges to `m`, query and update active task count and create command batch.
 -}
-finalize : Int -> Model r -> Meld r x msg -> ( Model r, Cmd msg )
-finalize taskCount appModel (Meld { merges, commands }) =
+finalize : Int -> (m -> Int) -> (Int -> m) -> m -> Meld m x msg -> ( m, Cmd msg )
+finalize taskCount modelCountFn storeCountFn appModel (Meld { merges, commands }) =
     let
         finalModel =
             merges
                 |> List.foldr
                     (\mergeFn accumModel -> mergeFn accumModel)
-                    { appModel | meldTasks = appModel.meldTasks - taskCount }
+                    (modelCountFn appModel - taskCount |> storeCountFn)
     in
     ( finalModel
     , commands
@@ -110,13 +79,13 @@ finalize taskCount appModel (Meld { merges, commands }) =
     )
 
 
-{-| Create an initial `Meld r x` from specified error and application model types.
+{-| Create an initial `Meld m x msg` from specified model and error.
 -}
-init : Model r -> x -> Meld r x msg
-init appModel appError =
+init : m -> x -> Meld m x msg
+init m err =
     Meld
-        { error = appError
-        , model = appModel
+        { error = err
+        , model = m
         , tasks = []
         , merges = []
         , commands = []
@@ -125,23 +94,23 @@ init appModel appError =
 
 {-| Default initial/first `Task` for a sequnce of tasks.
 -}
-initTask : Meld r x msg -> Task x (Meld r x msg)
+initTask : Meld m x msg -> Task x (Meld m x msg)
 initTask meld =
     Task.succeed meld
 
 
 {-| Get application's model.
 -}
-model : Meld r x msg -> Model r
+model : Meld m x msg -> m
 model (Meld { model }) =
     model
 
 
-{-| Execute a set of `Task`s added to a `Meld r x` instance in sequence and
-update `Model r`'s `meldTasks` counter.
+{-| Update model task count and execute `Meld m x msg` tasks in sequence,
+by continueing to a next task only upon successful completion of the previous task.
 -}
-sequence : (Int -> Result x (Meld r x msg) -> msg) -> Meld r x msg -> ( Model r, Cmd msg )
-sequence toMsg (Meld { error, model, tasks }) =
+sequence : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
+sequence toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -152,7 +121,9 @@ sequence toMsg (Meld { error, model, tasks }) =
                 List.length tasks
 
             nextModel =
-                { model | meldTasks = model.meldTasks + taskCount }
+                taskCountFn model
+                    |> (\tc -> tc + taskCount)
+                    |> storeCountFn
         in
         ( nextModel
         , init nextModel error
@@ -160,11 +131,10 @@ sequence toMsg (Meld { error, model, tasks }) =
         )
 
 
-{-| Execute a set of `Task`s added to a `Meld r x` instance in any order and
-update `Model r`'s `meldTasks` counter.
+{-| Update model task count and execute `Meld m x msg` tasks in any/unspecified order.
 -}
-update : (Int -> Result x (Meld r x msg) -> msg) -> Meld r x msg -> ( Model r, Cmd msg )
-update toMsg (Meld { error, model, tasks }) =
+update : (Int -> Result x (Meld m x msg) -> msg) -> (m -> Int) -> (Int -> m) -> Meld m x msg -> ( m, Cmd msg )
+update toMsg taskCountFn storeCountFn (Meld { error, model, tasks }) =
     if List.isEmpty tasks then
         ( model
         , Cmd.none
@@ -172,7 +142,9 @@ update toMsg (Meld { error, model, tasks }) =
     else
         let
             nextModel =
-                { model | meldTasks = model.meldTasks + List.length tasks }
+                taskCountFn model
+                    |> (\tc -> tc + List.length tasks)
+                    |> storeCountFn
         in
         ( nextModel
         , init nextModel error
@@ -180,17 +152,17 @@ update toMsg (Meld { error, model, tasks }) =
         )
 
 
-{-| Append a merge function and a list of command task functions to specified `Meld r x`.
+{-| Append a list of command functions to specified `Meld m x msg`.
 -}
-withCmds : List (FnCmd r msg) -> Meld r x msg -> Meld r x msg
+withCmds : List (m -> Cmd msg) -> Meld m x msg -> Meld m x msg
 withCmds cmdFns (Meld r) =
     Meld
-        { r | commands = cmdFns ++ r.commands }
+        { r | commands = r.commands ++ cmdFns }
 
 
-{-| Append a merge function to specified `Meld r x`.
+{-| Apply and append a merge function to specified `Meld m x msg`.
 -}
-withMerge : FnMerge r -> Meld r x msg -> Meld r x msg
+withMerge : (m -> m) -> Meld m x msg -> Meld m x msg
 withMerge mergeFn (Meld r) =
     Meld
         { r
@@ -199,17 +171,9 @@ withMerge mergeFn (Meld r) =
         }
 
 
-{-| Override model in specified `Meld r x`.
+{-| Append a list of task functions to specified `Meld m x msg`.
 -}
-withModel : Model r -> Meld r x msg -> Meld r x msg
-withModel appModel (Meld r) =
-    Meld
-        { r | model = appModel }
-
-
-{-| Append a list of task functions to specified `Meld r x`.
--}
-withTasks : List (FnTask r x msg) -> Meld r x msg -> Meld r x msg
+withTasks : List (Meld m x msg -> Task x (Meld m x msg)) -> Meld m x msg -> Meld m x msg
 withTasks taskFns (Meld r) =
     Meld
         { r | tasks = r.tasks ++ taskFns }
