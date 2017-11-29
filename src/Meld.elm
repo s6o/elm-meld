@@ -1,6 +1,7 @@
 module Meld
     exposing
-        ( Meld
+        ( Error(..)
+        , Meld
         , cmds
         , cmdseq
         , init
@@ -19,6 +20,7 @@ module Meld
 
 -}
 
+import Http
 import Task exposing (Task)
 
 
@@ -31,6 +33,13 @@ type Meld m x msg
         , merges : List (m -> m)
         , commands : List (m -> Cmd msg)
         }
+
+
+{-| Common error handling type to ease composability.
+-}
+type Error
+    = EMsg String
+    | EHttp Http.Error
 
 
 {-| Execute a set of `Meld m x msg`'s tasks in any/unspecified order.
