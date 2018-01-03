@@ -6,5 +6,5 @@ message type (msg).
 
 `Meld m x msg` starts with a model, collects `Task`s, to be executed by Elm's
 runtime, collects model _merge_ functions, to process `Task` execution results,
-and collects _commands_ functions (`m -> Cmd msg`) to be executed after
+and collects _command_ functions (`m -> Cmd msg`) to be executed after
 model merges.
