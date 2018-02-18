@@ -6,8 +6,10 @@ module Meld
         , cmds
         , cmdseq
         , errorMessage
+        , errorModel
         , httpError
         , init
+        , mapModel
         , model
         , send
         , sequence
@@ -23,7 +25,7 @@ module Meld
 
 # Task mapping
 
-@docs model, withCmds, withMerge
+@docs model, errorModel, mapModel, withCmds, withMerge
 
 
 # Task preparation
@@ -77,9 +79,25 @@ model (Meld { model }) =
     model
 
 
-{-| Append a list of command functions to specified `Meld m x msg`.
+{-| Unpack `Error m`'s model.
 -}
-withCmds : List (m -> Cmd msg) -> Meld m x msg -> Meld m x msg
+errorModel : Error m -> m
+errorModel error =
+    case error of
+        EMsg m _ ->
+            m
+
+        EHttp m _ ->
+            m
+
+
+{-| Apply changes to `Meld m msg`'s `m` without modifing its task, merge or command queues.
+-}
+mapModel : (m -> m) -> Meld m msg -> Meld m msg
+mapModel mFn (Meld r) =
+    Meld { r | model = mFn r.model }
+
+
 {-| Append a list of command functions to specified `Meld m msg`.
 -}
 withCmds : List (m -> Cmd msg) -> Meld m msg -> Meld m msg
