@@ -3,7 +3,9 @@ Composeable `Task`s, instead of just separate 'Msg' pattern match cases.
 
 The main idea of elm-meld can be codified with the following function signature:
 
+```elm
         Meld m msg -> Task (Meld.Error m) (Meld m msg)
+```
 
 where `m` represents an application's model and `msg` the union type used for
 messages/tagging.
