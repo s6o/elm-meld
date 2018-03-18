@@ -15,7 +15,7 @@ model merges.
 
 ## Setting up a 'Msg'
 
-```
+```elm
 type Msg
     = Act (List (Meld Model Msg -> Task (Error Model) (Meld Model Msg)))
     | ActSeq (List (Meld Model Msg -> Task (Error Model) (Meld Model Msg)))
@@ -25,7 +25,7 @@ type Msg
 
 ## Update
 
-```
+```elm
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -63,7 +63,7 @@ update msg model =
 
 ## A data module
 
-```
+```elm
 {-| Parent `Model` requirements.
 -}
 type alias Parent m =
@@ -181,7 +181,7 @@ validate meld =
 
 ## A View
 
-```
+```elm
 import Credentials as Creds
 
 -- ...
