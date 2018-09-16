@@ -17,7 +17,7 @@ module Meld
         , withMerge
         )
 
-{-| Composeable `Task`s, instead of hundreds of Msg pattern match cases.
+{-| Composeable `Task`s, instead of lengthy Msg pattern match cases.
 
 @docs Meld, Error
 
@@ -53,7 +53,7 @@ import Task exposing (Task)
 -}
 type Meld m msg
     = Meld
-        { model : m
+        { appModel : m
         , tasks : List (Meld m msg -> Task (Error m) (Meld m msg))
         , merges : List (m -> m)
         , commands : List (m -> Cmd msg)
@@ -74,8 +74,8 @@ type Error m
 {-| Unpack `Meld m msg`'s model.
 -}
 model : Meld m msg -> m
-model (Meld { model }) =
-    model
+model (Meld { appModel }) =
+    appModel
 
 
 {-| Unpack `Error m`'s model.
@@ -104,7 +104,7 @@ withMerge : (m -> m) -> Meld m msg -> Meld m msg
 withMerge mergeFn (Meld r) =
     Meld
         { r
-            | model = mergeFn r.model
+            | appModel = mergeFn r.appModel
             , merges = mergeFn :: r.merges
         }
 
@@ -113,12 +113,12 @@ withMerge mergeFn (Meld r) =
 -- Task preparation
 
 
-{-| Create an initial `Meld m msg` from specified model.
+{-| Create an initial `Meld m msg` from specified appModel.
 -}
 init : m -> Meld m msg
 init m =
     Meld
-        { model = m
+        { appModel = m
         , tasks = []
         , merges = []
         , commands = []
@@ -146,11 +146,11 @@ addTasks taskFns (Meld r) =
 send : (Result (Error m) (Meld m msg) -> msg) -> Meld m msg -> ( m, Cmd msg )
 send toMsg (Meld r) =
     if List.isEmpty r.tasks then
-        ( r.model
+        ( r.appModel
         , Cmd.none
         )
     else
-        ( r.model
+        ( r.appModel
         , cmds toMsg (Meld r)
         )
 
@@ -161,11 +161,11 @@ only upon successful completion of the previous task.
 sequence : (Result (Error m) (Meld m msg) -> msg) -> Meld m msg -> ( m, Cmd msg )
 sequence toMsg (Meld r) =
     if List.isEmpty r.tasks then
-        ( r.model
+        ( r.appModel
         , Cmd.none
         )
     else
-        ( r.model
+        ( r.appModel
         , cmdseq toMsg (Meld r)
         )
 
@@ -229,8 +229,8 @@ errorMessage error =
         EMsg _ msg ->
             msg
 
-        EHttp _ httpError ->
-            case httpError of
+        EHttp _ httpErr ->
+            case httpErr of
                 Http.BadUrl msg ->
                     msg
 
@@ -241,10 +241,10 @@ errorMessage error =
                     "Network error."
 
                 Http.BadStatus { status } ->
-                    toString status.code ++ " | " ++ status.message
+                    String.fromInt status.code ++ " | " ++ status.message
 
                 Http.BadPayload dbg { status } ->
-                    toString status.code ++ " | " ++ status.message ++ " | " ++ dbg
+                    String.fromInt status.code ++ " | " ++ status.message ++ " | " ++ dbg
 
 
 {-| Helper to access Http.Error is there is one.
@@ -252,8 +252,8 @@ errorMessage error =
 httpError : Error m -> Maybe Http.Error
 httpError error =
     case error of
-        EHttp _ httpError ->
-            Just httpError
+        EHttp _ httpErr ->
+            Just httpErr
 
         _ ->
             Nothing

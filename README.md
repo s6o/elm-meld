@@ -1,5 +1,5 @@
 # elm-meld
-Composeable `Task`s, instead of just separate 'Msg' pattern match cases.
+Composeable `Task`s, instead of lengthy 'Msg' pattern match cases.
 
 The main idea of elm-meld can be codified with the following function signature:
 
