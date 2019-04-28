@@ -111,8 +111,17 @@ update msg model =
 ## A data module
 
 ```elm
-{-| Parent `Model` requirements.
--}
+module Credentials exposing
+    ( Credentials
+    , CredentialsField(..)
+    , State(..)
+    , stateTo
+    , update
+    , validate
+    )
+
+import MError exposing (MError(..))
+
 type alias Parent m =
     { m | credentials : Maybe Credentials }
 
@@ -188,25 +197,18 @@ validate meld =
         |> Result.andThen
             (\r ->
                 if String.length r.username > 0 then
-                    Ok r
+                    Ok meld
                 else
                     Err "Username too short."
             )
         |> Result.andThen
             (\r ->
                 if String.length r.password > 0 then
-                    Ok r
+                    Ok meld
                 else
                     Err "Password too short."
             )
-        |> (\result ->
-                case result of
-                    Err msg ->
-                        EMsg model msg |> Task.fail
-
-                    Ok _ ->
-                        Task.succeed meld
-           )
+        |> Result.mapError (\s -> EMsg s |> Meld.error meld)
 
 
 {-| @private

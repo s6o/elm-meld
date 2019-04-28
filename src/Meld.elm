@@ -181,11 +181,18 @@ type Error m x
     = ErrX m x
 
 
+{-| Initialize error.
+-}
+error : Meld m x msg -> x -> Error m x
+error meld err =
+    ErrX (model meld) err
+
+
 {-| Unpack `Error m`'s model.
 -}
 errorModel : Error m x -> m
-errorModel error =
-    case error of
+errorModel err =
+    case err of
         ErrX m _ ->
             m
 
@@ -193,8 +200,8 @@ errorModel error =
 {-| Retrive the error message.
 -}
 errorMessage : (x -> String) -> Error m x -> String
-errorMessage xFn error =
-    case error of
+errorMessage xFn err =
+    case err of
         ErrX _ x ->
             xFn x
 
