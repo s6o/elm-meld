@@ -1,16 +1,25 @@
 # elm-meld
-Composeable `Task`s, instead of lengthy 'Msg' pattern match cases.
 
-The main idea of elm-meld can be codified with the following function signature:
+Write your Model-View-Update's update actions as `Task`s to be executed at
+once or sequencially. Pass along incremental Model updates to a next `Task` in a
+sequence.
+
+The main idea of elm-meld can be codified with the following function and type signatures:
 
 ```elm
-        Meld m msg -> Task (Meld.Error m) (Meld m msg)
+    Meld m x msg -> Task (Meld.Error m x) (Meld m x msg)
+
+    type alias MeldTask m x msg =
+        Task (Meld.Error x m) (Meld m msg)
+
+    type alias MeldResponse m x msg =
+        Result (Error m x) (Meld m x msg)
 ```
 
 where `m` represents an application's model and `msg` the union type used for
-messages/tagging.
+messages/tagging and `x` is the union type for errors.
 
-The `Meld m msg` starts with a model, collects `Task`s, to be executed by Elm's
+The `Meld m x msg` starts with a model, collects `Task`s, to be executed by Elm's
 runtime, collects model _merge_ functions, to process `Task` execution results,
 and collects _command_ functions (`m -> Cmd msg`) to be executed after
 model merges.
@@ -18,11 +27,48 @@ model merges.
 ## Setting up a 'Msg'
 
 ```elm
+import Http
+import Meld exposing (MeldTask, Error(..))
+
+type MError
+    = EMsg String
+    | EHttp Http.Error
+
+type Model =
+    { errorMessage : String
+    , credentials : Maybe Credentials
+    -- ..additional fields
+    }
+
 type Msg
-    = Act (List (Meld Model Msg -> Task (Error Model) (Meld Model Msg)))
-    | ActSeq (List (Meld Model Msg -> Task (Error Model) (Meld Model Msg)))
-    | Responses (Result (Error Model) (Meld Model Msg))
-    | TextInput (String -> Meld Model Msg -> Task (Error Model) (Meld Model Msg)) String
+    = Act (List (Meld Model MError Msg -> MeldTask Model MError Msg)
+    | ActSeq (List (Meld Model Merror Msg -> MeldTask Model MError Msg))
+    | Responses (MeldResponse Model MError Msg)
+    | TextInput (String -> Meld Model MError Msg -> MeldTask Model MError Msg) String
+
+
+modelErrMsg : MError -> String
+modelErrMsg merror  =
+    case merror of
+        EMsg s ->
+            s
+
+        EHttp hErr ->
+            case hErr of
+                BadUrl s ->
+                    "Bad URL - " ++ s
+
+                Timeout s ->
+                    "Http request timeout."
+
+                NetworkError ->
+                    "Network failure."
+
+                BadStatus scode ->
+                    "Bad status - " ++ (String.fromInt scode)
+
+                BadBody s ->
+                    "Bad body - " ++ s
 ```
 
 ## Update
@@ -48,10 +94,9 @@ update msg model =
 
                 Err meldError ->
                     let
-                        _ =
-                            Debug.log "Act/ActSeq Error" <| Meld.errorMessage meldError
-                    in
-                    ( Meld.errorModel meldError
+                        errModel =
+                            Meld.errorModel meldError
+                    ( {errModel | errorMessage = Meld.errorMessage modelErrMsg meldError}
                     , Cmd.none
                     )
 
@@ -90,7 +135,9 @@ type State
     | WaitingEntries
 
 
-stateTo : State -> Meld (Parent m) msg -> Task (Error (Parent m)) (Meld (Parent m) msg)
+{-| Credentials state update `Task`.
+-}
+stateTo : State -> Meld (Parent m) x msg -> MeldTask (Parent m) x msg
 stateTo newState meld =
     let
         taskModel ma =
@@ -103,7 +150,9 @@ stateTo newState meld =
         |> Task.succeed
 
 
-update : CredentialsField -> String -> Meld (Parent m) msg -> Task (Error (Parent m)) (Meld (Parent m) msg)
+{-| Credentials record update `Task`.
+-}
+update : CredentialsField -> String -> Meld (Parent m) x msg -> MeldTask (Parent m) x msg
 update field value meld =
     let
         model =
@@ -126,30 +175,9 @@ update field value meld =
         |> Task.succeed
 
 
-{-| @private
+{-| Credentials validaion `Task`, to be chained before an HTTP `Task`.
 -}
-empty : Maybe Credentials
-empty =
-    { username = ""
-    , password = ""
-    , state = WaitingEntries
-    }
-        |> Just
-
-
-{-| @private
--}
-updateField : CredentialsField -> String -> Credentials -> Credentials
-updateField field value r =
-    case field of
-        Username ->
-            { r | state = WaitingEntries, username = value }
-
-        Password ->
-            { r | state = WaitingEntries, password = value }
-
-
-validate : Meld (Parent m) msg -> Task (Error (Parent m)) (Meld (Parent m) msg)
+validate : Meld (Parent m) x msg -> MeldTask (Parent m) x msg
 validate meld =
     let
         model =
@@ -179,6 +207,29 @@ validate meld =
                     Ok _ ->
                         Task.succeed meld
            )
+
+
+{-| @private
+-}
+empty : Maybe Credentials
+empty =
+    { username = ""
+    , password = ""
+    , state = WaitingEntries
+    }
+        |> Just
+
+
+{-| @private
+-}
+updateField : CredentialsField -> String -> Credentials -> Credentials
+updateField field value r =
+    case field of
+        Username ->
+            { r | state = WaitingEntries, username = value }
+
+        Password ->
+            { r | state = WaitingEntries, password = value }
 ```
 
 ## A View

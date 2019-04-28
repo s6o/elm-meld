@@ -1,7 +1,7 @@
 {
     "type": "package",
     "name": "s6o/elm-meld",
-    "summary": "elm-meld - Composeable tasks, instead of lengthy Msg pattern match cases.",
+    "summary": "elm-meld - Write MVU actions as `Task`s to be executed at once or sequencially.",
     "license": "MIT",
     "version": "1.0.0",
     "exposed-modules": [
@@ -9,8 +9,7 @@
     ],
     "elm-version": "0.19.0 <= v < 0.20.0",
     "dependencies": {
-        "elm/core": "1.0.0 <= v < 2.0.0",
-        "elm/http": "1.0.0 <= v < 2.0.0"
+        "elm/core": "1.0.0 <= v < 2.0.0"
     },
     "test-dependencies": {}
 }
