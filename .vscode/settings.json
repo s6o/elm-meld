@@ -1,3 +1,10 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "elm-format.formatOnSave": true,
+    "elm.compiler": "./node_modules/elm19/bin/elm",
+    "elm.formatCommand": "./node_modules/elm-format19/bin/elm-format",
+    "elm.includeUserFunctionDocumentation": true,
+    "[elm]": {
+        "editor.formatOnSave": true
+    },
 }
