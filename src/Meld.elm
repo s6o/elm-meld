@@ -17,7 +17,9 @@ module Meld
         , withMerge
         )
 
-{-| Composeable `Task`s, instead of lengthy Msg pattern match cases.
+{-| Write your Model-View-Update's update actions as `Task`s to be executed at
+once or sequencially. Pass along incremental Model updates to a next `Task` in a
+sequence.
 
 @docs Meld, Error
 
